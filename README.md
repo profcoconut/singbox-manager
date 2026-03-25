@@ -18,8 +18,7 @@ Cloudflare Worker that:
 ## Endpoints
 
 - `GET /profiles`
-- `GET /config/default?device=tun&access_token=YOUR_TOKEN`
-- `GET /config/default?device=apple&access_token=YOUR_TOKEN`
+- `GET /config/default.json?access_token=YOUR_TOKEN`
 - `GET /config/global?device=desktop&access_token=YOUR_TOKEN`
 - `GET /rules/OpenAI.json?access_token=YOUR_TOKEN`
 - `GET /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
@@ -27,7 +26,12 @@ Cloudflare Worker that:
 - `POST /admin/subscription/sync?admin_token=YOUR_ADMIN_TOKEN`
 - `GET /health`
 
-`device` options:
+Default behavior:
+
+- `/config/default` now returns the Apple-safe profile by default so you only need one import URL.
+- `/config/default.json` is the canonical import URL.
+
+Optional `device` overrides:
 
 - `tun`: one TUN inbound for phones/tablets
 - `apple`: Apple-tuned TUN profile with a more conservative inbound layout
@@ -100,16 +104,16 @@ Use your real subscription URL for `SUBSCRIPTION_URL`.
 npx wrangler deploy
 ```
 
-5. Import the generated config URL into sing-box on each device, for example:
+5. Import the generated config URL into sing-box on each device:
 
 ```text
-https://YOUR-WORKER.workers.dev/config/default?device=tun&access_token=YOUR_TOKEN
+https://YOUR-WORKER.workers.dev/config/default.json?access_token=YOUR_TOKEN
 ```
 
-For desktops:
+Advanced desktop-only override:
 
 ```text
-https://YOUR-WORKER.workers.dev/config/default?device=desktop&access_token=YOUR_TOKEN
+https://YOUR-WORKER.workers.dev/config/default.json?device=desktop&access_token=YOUR_TOKEN
 ```
 
 ## Notes

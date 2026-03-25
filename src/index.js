@@ -104,13 +104,13 @@ async function handleRequest(request, event) {
         description: "Cloudflare-hosted sing-box config generator",
         endpoints: {
           profiles: "/profiles",
-          config: "/config/:profile?device=tun&access_token=YOUR_TOKEN",
-          apple: "/config/:profile?device=apple&access_token=YOUR_TOKEN",
+          config: "/config/:profile.json?access_token=YOUR_TOKEN",
+          advanced_config: "/config/:profile.json?device=apple|desktop|proxy|tun&access_token=YOUR_TOKEN",
           rules: "/rules/:ruleSet.json?access_token=YOUR_TOKEN",
           health: "/health"
         },
         profiles: Object.keys(settings.profiles),
-        devices: ["tun", "apple", "desktop", "proxy"],
+        default_device: "apple",
         configured: Boolean(settings.subscriptionUrl)
       });
     }
@@ -196,7 +196,7 @@ async function handleConfigRequest(request, url, settings) {
     return jsonResponse({ error: "Unknown profile", profile: profileName }, 404);
   }
 
-  var device = (url.searchParams.get("device") || "tun").toLowerCase();
+  var device = normalizeDevice(url.searchParams.get("device"));
   var rawSubscription = await loadSubscriptionText(settings);
   var subscription = parseSubscription(rawSubscription);
 
@@ -435,6 +435,17 @@ function buildInbounds(device) {
   }
 
   return [sharedTun];
+}
+
+function normalizeDevice(device) {
+  var normalized = String(device || "apple").toLowerCase();
+  if (normalized === "default" || normalized === "ios") {
+    return "apple";
+  }
+  if (normalized === "apple" || normalized === "desktop" || normalized === "proxy" || normalized === "tun") {
+    return normalized;
+  }
+  return "apple";
 }
 
 function buildProxyGroups(profile, nodes, settings) {
