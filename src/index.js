@@ -3,9 +3,15 @@ var BASE_CONFIG = {
   defaultTestUrl: "https://www.gstatic.com/generate_204",
   configCacheTtl: 300,
   ruleCacheTtl: 86400,
+  upstreamTimeoutMs: 15000,
   defaultRuleUpdateInterval: "1d",
   subscriptionHeaders: {
-    "user-agent": "Mozilla/5.0 (compatible; singbox-manager/0.1; +https://workers.dev)"
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "accept-language": "en-US,en;q=0.9",
+    "cache-control": "no-cache",
+    "pragma": "no-cache",
+    "upgrade-insecure-requests": "1",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
   },
   ruleSets: {
     OpenAI: { path: "OpenAI/OpenAI.list" },
@@ -228,7 +234,8 @@ async function handleRuleRequest(request, url, settings) {
 
   var upstreamUrl = settings.ruleRepoBase.replace(/\/$/, "") + "/" + ruleMeta.path;
   var rawList = await fetchText(upstreamUrl, {
-    headers: settings.subscriptionHeaders
+    headers: settings.subscriptionHeaders,
+    timeoutMs: settings.upstreamTimeoutMs
   });
   var converted = convertRuleList(ruleName, rawList);
 
@@ -268,7 +275,8 @@ async function handleAdminSubscriptionRequest(request, settings) {
 async function handleAdminSubscriptionSync(settings) {
   try {
     var liveText = await fetchText(settings.subscriptionUrl, {
-      headers: settings.subscriptionHeaders
+      headers: settings.subscriptionHeaders,
+      timeoutMs: settings.upstreamTimeoutMs
     });
     await storeSubscriptionSnapshot(settings, liveText, "upstream-sync");
     var parsed = parseSubscription(liveText);
@@ -290,7 +298,8 @@ async function handleAdminSubscriptionSync(settings) {
 
 function buildSingBoxConfig(input) {
   var accessToken = input.settings.accessToken || input.requestUrl.searchParams.get("access_token") || "";
-  var proxyGroups = buildProxyGroups(input.profile, input.nodes, input.settings);
+  var resolvedNodes = applyOutboundDomainResolver(input.nodes, "dns-direct");
+  var proxyGroups = buildProxyGroups(input.profile, resolvedNodes, input.settings);
   var routeRuleSets = buildRemoteRuleSets(input.requestUrl, input.settings, input.profile, accessToken);
   var routeRules = buildRouteRules(input.profile, proxyGroups.referenceMap);
   var outbounds = []
@@ -299,7 +308,7 @@ function buildSingBoxConfig(input) {
       { type: "block", tag: "block" }
     ])
     .concat(proxyGroups.outbounds)
-    .concat(input.nodes);
+    .concat(resolvedNodes);
 
   return {
     log: {
@@ -315,13 +324,22 @@ function buildSingBoxConfig(input) {
       strategy: "prefer_ipv4",
       servers: [
         {
+          type: "https",
           tag: "dns-remote",
-          address: "https://1.1.1.1/dns-query",
+          server: "cloudflare-dns.com",
+          server_port: 443,
+          path: "/dns-query",
+          tls: {
+            enabled: true,
+            server_name: "cloudflare-dns.com"
+          },
+          domain_resolver: "dns-direct",
           detour: proxyGroups.defaultDetour
         },
         {
+          type: "local",
           tag: "dns-direct",
-          address: "local"
+          prefer_go: false
         }
       ],
       rules: [
@@ -343,11 +361,24 @@ function buildSingBoxConfig(input) {
     outbounds: outbounds,
     route: {
       auto_detect_interface: true,
+      default_domain_resolver: "dns-direct",
       final: proxyGroups.defaultDetour,
       rule_set: routeRuleSets,
       rules: routeRules
     }
   };
+}
+
+function applyOutboundDomainResolver(nodes, resolverTag) {
+  var results = [];
+  for (var i = 0; i < nodes.length; i += 1) {
+    var outbound = clone(nodes[i]);
+    if (outbound.server && !isIpAddress(outbound.server) && !outbound.domain_resolver) {
+      outbound.domain_resolver = resolverTag;
+    }
+    results.push(outbound);
+  }
+  return results;
 }
 
 function buildInbounds(device) {
@@ -463,7 +494,7 @@ function buildRemoteRuleSets(requestUrl, settings, profile, accessToken) {
       tag: "rs-" + slugify(ruleName),
       format: "source",
       url: appendAccessToken(origin + "/rules/" + encodeURIComponent(ruleName) + ".json", accessToken),
-      download_detour: profile.final || "direct",
+      download_detour: "direct",
       update_interval: settings.defaultRuleUpdateInterval
     });
   }
@@ -802,11 +833,35 @@ function convertRuleList(ruleName, rawList) {
 }
 
 async function fetchText(url, options) {
-  var response = await fetch(url, options || {});
-  if (!response.ok) {
-    throw new Error("Upstream fetch failed: " + response.status + " " + response.statusText);
+  var requestOptions = cloneRequestOptions(options);
+  var timeoutMs = requestOptions.timeoutMs || BASE_CONFIG.upstreamTimeoutMs;
+  var controller = typeof AbortController === "function" ? new AbortController() : null;
+  var timer = null;
+
+  delete requestOptions.timeoutMs;
+  if (controller && timeoutMs > 0) {
+    requestOptions.signal = controller.signal;
+    timer = setTimeout(function () {
+      controller.abort();
+    }, timeoutMs);
   }
-  return response.text();
+
+  try {
+    var response = await fetch(url, requestOptions);
+    if (!response.ok) {
+      throw new Error("Upstream fetch failed: " + response.status + " " + response.statusText);
+    }
+    return response.text();
+  } catch (error) {
+    if (controller && controller.signal && controller.signal.aborted) {
+      throw new Error("Upstream fetch timed out after " + timeoutMs + "ms");
+    }
+    throw error;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 async function loadSubscriptionText(settings) {
@@ -815,7 +870,8 @@ async function loadSubscriptionText(settings) {
   if (settings.subscriptionUrl) {
     try {
       return await fetchText(settings.subscriptionUrl, {
-        headers: settings.subscriptionHeaders
+        headers: settings.subscriptionHeaders,
+        timeoutMs: settings.upstreamTimeoutMs
       });
     } catch (error) {
       liveError = error;
@@ -894,6 +950,7 @@ function getSettings() {
   settings.defaultTestUrl = getBinding("DEFAULT_TEST_URL", settings.defaultTestUrl);
   settings.configCacheTtl = parsePort(getBinding("CONFIG_CACHE_TTL", settings.configCacheTtl), settings.configCacheTtl);
   settings.ruleCacheTtl = parsePort(getBinding("RULE_CACHE_TTL", settings.ruleCacheTtl), settings.ruleCacheTtl);
+  settings.upstreamTimeoutMs = parsePort(getBinding("UPSTREAM_TIMEOUT_MS", settings.upstreamTimeoutMs), settings.upstreamTimeoutMs);
   settings.defaultRuleUpdateInterval = getBinding("DEFAULT_RULE_UPDATE_INTERVAL", settings.defaultRuleUpdateInterval);
 
   return settings;
@@ -1137,6 +1194,10 @@ function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
 
+function isIpAddress(value) {
+  return /^[0-9.]+$/.test(String(value || "")) || String(value || "").indexOf(":") >= 0;
+}
+
 function safeBase64Decode(value) {
   var normalized = String(value || "").replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
   while (normalized.length % 4 !== 0) {
@@ -1167,6 +1228,17 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function cloneRequestOptions(value) {
+  var result = {};
+  var key;
+  for (key in value || {}) {
+    if (Object.prototype.hasOwnProperty.call(value || {}, key)) {
+      result[key] = value[key];
+    }
+  }
+  return result;
+}
+
 function uniqueStrings(values) {
   var seen = {};
   var results = [];
@@ -1192,10 +1264,12 @@ function isTruthy(value) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    BASE_CONFIG: BASE_CONFIG,
     parseSubscription: parseSubscription,
     convertRuleList: convertRuleList,
     buildProxyGroups: buildProxyGroups,
     buildRouteRules: buildRouteRules,
-    parseProxyUri: parseProxyUri
+    parseProxyUri: parseProxyUri,
+    buildSingBoxConfig: buildSingBoxConfig
   };
 }
