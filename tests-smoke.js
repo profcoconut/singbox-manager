@@ -1,10 +1,12 @@
 const assert = require('node:assert/strict');
 const {
+  BASE_CONFIG,
   parseSubscription,
   convertRuleList,
   parseProxyUri,
   buildProxyGroups,
   buildRouteRules,
+  buildSingBoxConfig
 } = require('./src/index.js');
 
 (function testParseSubscription() {
@@ -66,6 +68,25 @@ const {
   assert.equal(grouped.referenceMap.openai, 'proxy');
   const openAiRule = rules.find((rule) => Array.isArray(rule.rule_set) && rule.rule_set.includes('rs-openai'));
   assert.equal(openAiRule.outbound, 'proxy');
+})();
+
+(function testLegacyAppleCompatibilityShape() {
+  const lines = [
+    'vless://11111111-1111-1111-1111-111111111111@example.com:443?type=ws&security=tls&path=%2Fws#US-Node'
+  ].join('\n');
+  const parsed = parseSubscription(lines);
+  const config = buildSingBoxConfig({
+    requestUrl: new URL('https://example.com/config/default.json?access_token=test'),
+    settings: Object.assign({}, BASE_CONFIG, { accessToken: 'test' }),
+    profileName: 'default',
+    profile: BASE_CONFIG.profiles.default,
+    device: 'apple',
+    compat: 'legacy',
+    nodes: parsed.outbounds
+  });
+  assert.equal(config.dns.servers[0].address, 'local');
+  assert.equal(config.outbounds.some((outbound) => Object.prototype.hasOwnProperty.call(outbound, 'domain_resolver')), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'default_domain_resolver'), false);
 })();
 
 console.log('tests-smoke passed');

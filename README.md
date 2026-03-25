@@ -19,7 +19,7 @@ Cloudflare Worker that:
 
 - `GET /profiles`
 - `GET /config/default.json?access_token=YOUR_TOKEN`
-- `GET /config/global?device=desktop&access_token=YOUR_TOKEN`
+- `GET /config/default.json?device=desktop&compat=modern&access_token=YOUR_TOKEN`
 - `GET /rules/OpenAI.json?access_token=YOUR_TOKEN`
 - `GET /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
 - `PUT /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
@@ -30,6 +30,7 @@ Default behavior:
 
 - `/config/default` now returns the Apple-safe profile by default so you only need one import URL.
 - `/config/default.json` is the canonical import URL.
+- Apple/default imports use `compat=legacy` automatically so older sing-box Apple builds can parse the config.
 
 Optional `device` overrides:
 
@@ -37,6 +38,11 @@ Optional `device` overrides:
 - `apple`: Apple-tuned TUN profile with a more conservative inbound layout
 - `desktop`: TUN + local mixed port `127.0.0.1:7890`
 - `proxy`: local mixed port only
+
+Optional `compat` overrides:
+
+- `legacy`: strips newer DNS/domain-resolver fields for older Apple clients
+- `modern`: keeps the current sing-box 1.13+ schema
 
 ## Customize Traffic Routing
 
@@ -78,7 +84,7 @@ npm test
 
 ## Deploy To Cloudflare
 
-You need Node 18+ locally for `wrangler`. This machine currently has Node `v10.16.0`, so deployment was not possible from here.
+You need Node 18+ locally for `wrangler`.
 
 1. Install a newer Node and Wrangler.
 2. Log into Cloudflare:
@@ -113,7 +119,7 @@ https://YOUR-WORKER.workers.dev/config/default.json?access_token=YOUR_TOKEN
 Advanced desktop-only override:
 
 ```text
-https://YOUR-WORKER.workers.dev/config/default.json?device=desktop&access_token=YOUR_TOKEN
+https://YOUR-WORKER.workers.dev/config/default.json?device=desktop&compat=modern&access_token=YOUR_TOKEN
 ```
 
 ## Notes

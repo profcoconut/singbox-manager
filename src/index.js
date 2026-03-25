@@ -105,12 +105,13 @@ async function handleRequest(request, event) {
         endpoints: {
           profiles: "/profiles",
           config: "/config/:profile.json?access_token=YOUR_TOKEN",
-          advanced_config: "/config/:profile.json?device=apple|desktop|proxy|tun&access_token=YOUR_TOKEN",
+          advanced_config: "/config/:profile.json?device=apple|desktop|proxy|tun&compat=legacy|modern&access_token=YOUR_TOKEN",
           rules: "/rules/:ruleSet.json?access_token=YOUR_TOKEN",
           health: "/health"
         },
         profiles: Object.keys(settings.profiles),
         default_device: "apple",
+        default_compat: "legacy",
         configured: Boolean(settings.subscriptionUrl)
       });
     }
@@ -197,6 +198,7 @@ async function handleConfigRequest(request, url, settings) {
   }
 
   var device = normalizeDevice(url.searchParams.get("device"));
+  var compat = normalizeCompatibility(url.searchParams.get("compat"), device);
   var rawSubscription = await loadSubscriptionText(settings);
   var subscription = parseSubscription(rawSubscription);
 
@@ -213,6 +215,7 @@ async function handleConfigRequest(request, url, settings) {
     profileName: profileName,
     profile: profile,
     device: device,
+    compat: compat,
     nodes: subscription.outbounds
   });
 
@@ -220,6 +223,7 @@ async function handleConfigRequest(request, url, settings) {
     "cache-control": "public, max-age=" + settings.configCacheTtl,
     "x-singbox-manager-profile": profileName,
     "x-singbox-manager-device": device,
+    "x-singbox-manager-compat": compat,
     "x-singbox-manager-nodes": String(subscription.outbounds.length),
     "x-singbox-manager-unsupported": String(subscription.unsupported.length)
   });
@@ -311,7 +315,7 @@ function buildSingBoxConfig(input) {
     .concat(proxyGroups.outbounds)
     .concat(resolvedNodes);
 
-  return {
+  var config = {
     log: {
       level: "info",
       timestamp: true
@@ -368,6 +372,12 @@ function buildSingBoxConfig(input) {
       rules: routeRules
     }
   };
+
+  if (input.compat === "legacy") {
+    return toLegacyCompatibleConfig(config);
+  }
+
+  return config;
 }
 
 function applyOutboundDomainResolver(nodes, resolverTag) {
@@ -446,6 +456,48 @@ function normalizeDevice(device) {
     return normalized;
   }
   return "apple";
+}
+
+function normalizeCompatibility(compat, device) {
+  var normalized = String(compat || "").toLowerCase();
+  if (normalized === "legacy" || normalized === "modern") {
+    return normalized;
+  }
+  return device === "apple" ? "legacy" : "modern";
+}
+
+function toLegacyCompatibleConfig(config) {
+  var legacy = clone(config);
+  if (legacy.dns && legacy.dns.servers && legacy.dns.servers.length) {
+    legacy.dns.servers = [
+      {
+        tag: "dns-remote",
+        address: "local"
+      },
+      {
+        tag: "dns-direct",
+        address: "local"
+      }
+    ];
+  }
+
+  if (legacy.dns && legacy.dns.rules) {
+    for (var j = 0; j < legacy.dns.rules.length; j += 1) {
+      delete legacy.dns.rules[j].strategy;
+    }
+  }
+
+  if (legacy.route) {
+    delete legacy.route.default_domain_resolver;
+  }
+
+  if (legacy.outbounds) {
+    for (var k = 0; k < legacy.outbounds.length; k += 1) {
+      delete legacy.outbounds[k].domain_resolver;
+    }
+  }
+
+  return legacy;
 }
 
 function buildProxyGroups(profile, nodes, settings) {
