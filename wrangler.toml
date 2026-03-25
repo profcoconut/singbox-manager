@@ -3,6 +3,10 @@ main = "src/index.js"
 compatibility_date = "2026-03-25"
 workers_dev = true
 
+[[kv_namespaces]]
+binding = "SINGBOX_CACHE"
+id = "f6f2d784f89146fea863e850d13ce7fb"
+
 [vars]
 RULES_REPO_BASE = "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge"
 DEFAULT_TEST_URL = "https://www.gstatic.com/generate_204"

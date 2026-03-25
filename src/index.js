@@ -140,6 +140,20 @@ async function handleRequest(request, event) {
       return configResponse;
     }
 
+    if (path === "/admin/subscription") {
+      if (!isAdminAuthorized(request, url, settings)) {
+        return unauthorizedResponse();
+      }
+      return await handleAdminSubscriptionRequest(request, settings);
+    }
+
+    if (path === "/admin/subscription/sync") {
+      if (!isAdminAuthorized(request, url, settings)) {
+        return unauthorizedResponse();
+      }
+      return await handleAdminSubscriptionSync(settings);
+    }
+
     if (path.indexOf("/rules/") === 0 && path.slice(-5) === ".json") {
       if (!isAuthorized(request, url, settings)) {
         return unauthorizedResponse();
@@ -174,9 +188,7 @@ async function handleConfigRequest(request, url, settings) {
   }
 
   var device = (url.searchParams.get("device") || "tun").toLowerCase();
-  var rawSubscription = await fetchText(settings.subscriptionUrl, {
-    headers: settings.subscriptionHeaders
-  });
+  var rawSubscription = await loadSubscriptionText(settings);
   var subscription = parseSubscription(rawSubscription);
 
   if (!subscription.outbounds.length) {
@@ -223,6 +235,55 @@ async function handleRuleRequest(request, url, settings) {
     "x-singbox-manager-rule": ruleName,
     "x-singbox-manager-skipped": String(converted.skipped.length)
   });
+}
+
+async function handleAdminSubscriptionRequest(request, settings) {
+  if (request.method === "GET") {
+    return jsonResponse(await getSubscriptionSnapshotStatus(settings));
+  }
+
+  if (request.method !== "PUT" && request.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  var body = await request.text();
+  if (!String(body || "").trim()) {
+    return jsonResponse({ error: "Empty subscription body" }, 400);
+  }
+
+  await storeSubscriptionSnapshot(settings, body, "manual-upload");
+  var parsed = parseSubscription(body);
+
+  return jsonResponse({
+    ok: true,
+    source: "manual-upload",
+    nodes: parsed.outbounds.length,
+    unsupported: parsed.unsupported.length,
+    stored_at: new Date().toISOString()
+  });
+}
+
+async function handleAdminSubscriptionSync(settings) {
+  try {
+    var liveText = await fetchText(settings.subscriptionUrl, {
+      headers: settings.subscriptionHeaders
+    });
+    await storeSubscriptionSnapshot(settings, liveText, "upstream-sync");
+    var parsed = parseSubscription(liveText);
+    return jsonResponse({
+      ok: true,
+      source: "upstream-sync",
+      nodes: parsed.outbounds.length,
+      unsupported: parsed.unsupported.length,
+      stored_at: new Date().toISOString()
+    });
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      error: error && error.message ? error.message : String(error),
+      snapshot: await getSubscriptionSnapshotStatus(settings)
+    }, 502);
+  }
 }
 
 function buildSingBoxConfig(input) {
@@ -450,6 +511,9 @@ function parseSubscription(text) {
     }
     try {
       var outbound = parseProxyUri(line);
+      if (isInformationalTag(outbound.tag)) {
+        continue;
+      }
       outbound.tag = dedupeTag(outbound.tag, seen);
       outbounds.push(outbound);
     } catch (error) {
@@ -743,11 +807,87 @@ async function fetchText(url, options) {
   return response.text();
 }
 
+async function loadSubscriptionText(settings) {
+  var liveError = null;
+
+  if (settings.subscriptionUrl) {
+    try {
+      return await fetchText(settings.subscriptionUrl, {
+        headers: settings.subscriptionHeaders
+      });
+    } catch (error) {
+      liveError = error;
+    }
+  }
+
+  var snapshot = await readSubscriptionSnapshot(settings);
+  if (snapshot) {
+    return snapshot;
+  }
+
+  if (liveError) {
+    throw liveError;
+  }
+
+  throw new Error("No subscription source configured");
+}
+
+async function readSubscriptionSnapshot(settings) {
+  var cache = settings.snapshotStore;
+  if (!cache || typeof cache.get !== "function") {
+    return "";
+  }
+  var value = await cache.get("subscription/current");
+  return value || "";
+}
+
+async function storeSubscriptionSnapshot(settings, content, source) {
+  var cache = settings.snapshotStore;
+  if (!cache || typeof cache.put !== "function") {
+    throw new Error("SINGBOX_CACHE binding is missing");
+  }
+  var now = new Date().toISOString();
+  await cache.put("subscription/current", String(content || "").trim());
+  await cache.put("subscription/meta", JSON.stringify({
+    updated_at: now,
+    source: source || "unknown"
+  }));
+}
+
+async function getSubscriptionSnapshotStatus(settings) {
+  var cache = settings.snapshotStore;
+  if (!cache || typeof cache.get !== "function") {
+    return {
+      available: false,
+      binding: false
+    };
+  }
+
+  var content = await cache.get("subscription/current");
+  var metaRaw = await cache.get("subscription/meta");
+  var meta = null;
+
+  try {
+    meta = metaRaw ? JSON.parse(metaRaw) : null;
+  } catch (error) {
+    meta = null;
+  }
+
+  return {
+    available: Boolean(content),
+    binding: true,
+    updated_at: meta && meta.updated_at ? meta.updated_at : null,
+    source: meta && meta.source ? meta.source : null,
+    size: content ? content.length : 0
+  };
+}
+
 function getSettings() {
   var settings = clone(BASE_CONFIG);
   settings.subscriptionUrl = getBinding("SUBSCRIPTION_URL", "");
   settings.accessToken = getBinding("ACCESS_TOKEN", "");
   settings.adminToken = getBinding("ADMIN_TOKEN", "");
+  settings.snapshotStore = getBinding("SINGBOX_CACHE", null);
   settings.ruleRepoBase = getBinding("RULES_REPO_BASE", settings.ruleRepoBase);
   settings.defaultTestUrl = getBinding("DEFAULT_TEST_URL", settings.defaultTestUrl);
   settings.configCacheTtl = parsePort(getBinding("CONFIG_CACHE_TTL", settings.configCacheTtl), settings.configCacheTtl);
@@ -773,6 +913,17 @@ function isAuthorized(request, url, settings) {
   var bearerToken = authHeader && authHeader.toLowerCase().indexOf("bearer ") === 0 ? authHeader.slice(7) : "";
   var queryToken = url.searchParams.get("access_token");
   return headerToken === settings.accessToken || bearerToken === settings.accessToken || queryToken === settings.accessToken;
+}
+
+function isAdminAuthorized(request, url, settings) {
+  if (!settings.adminToken) {
+    return false;
+  }
+  var headerToken = request.headers.get("x-admin-token");
+  var authHeader = request.headers.get("authorization");
+  var bearerToken = authHeader && authHeader.toLowerCase().indexOf("bearer ") === 0 ? authHeader.slice(7) : "";
+  var queryToken = url.searchParams.get("admin_token");
+  return headerToken === settings.adminToken || bearerToken === settings.adminToken || queryToken === settings.adminToken;
 }
 
 function shouldBypassCache(request, url) {
@@ -939,6 +1090,11 @@ function dedupeTag(tag, seen) {
 
 function cleanupTag(tag) {
   return String(tag || "proxy-node").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isInformationalTag(tag) {
+  var value = cleanupTag(tag);
+  return /剩余流量|下次重置|套餐到期|官网|工单|使用教程|流量重置|到期时间/i.test(value);
 }
 
 function decodeLabel(hash) {

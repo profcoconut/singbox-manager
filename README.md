@@ -21,6 +21,9 @@ Cloudflare Worker that:
 - `GET /config/default?device=tun&access_token=YOUR_TOKEN`
 - `GET /config/global?device=desktop&access_token=YOUR_TOKEN`
 - `GET /rules/OpenAI.json?access_token=YOUR_TOKEN`
+- `GET /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
+- `PUT /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
+- `POST /admin/subscription/sync?admin_token=YOUR_ADMIN_TOKEN`
 - `GET /health`
 
 `device` options:
@@ -101,4 +104,17 @@ https://YOUR-WORKER.workers.dev/config/default?device=desktop&access_token=YOUR_
 
 - BlackMatrix7 contains some rule types that do not map cleanly to sing-box source rule-sets, such as `URL-REGEX`, `PROCESS-NAME`, and `IP-ASN`. This Worker skips those lines and reports the skipped count in the response header.
 - Latency switching is handled by sing-box `urltest` on the device side, not by Cloudflare.
+- The current subscription host returns `403` to Cloudflare Worker fetches, even though it is reachable from a normal client. Because of that, the Worker now supports a Cloudflare KV snapshot fallback.
+- To refresh the snapshot from a trusted machine, run:
+
+```bash
+curl -sS 'YOUR_SUBSCRIPTION_URL' | curl -sS -X PUT --data-binary @- 'https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN'
+```
+
+- You can check snapshot status with:
+
+```bash
+curl -sS 'https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN'
+```
+
 - If you want a web admin UI next, the natural next step is adding Cloudflare KV or D1 for editable profiles instead of changing code.
