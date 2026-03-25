@@ -60,6 +60,16 @@ Edit [`src/index.js`](/Users/tengpeng/Documents/Playground/src/index.js) in `BAS
 
 This is the Profiles4limbo-style part: traffic category -> chosen outbound group.
 
+
+## Local sanity checks
+
+Run lightweight parser and conversion checks locally:
+
+```bash
+npm run check
+npm test
+```
+
 ## Deploy To Cloudflare
 
 You need Node 18+ locally for `wrangler`. This machine currently has Node `v10.16.0`, so deployment was not possible from here.

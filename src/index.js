@@ -79,9 +79,11 @@ var BASE_CONFIG = {
   }
 };
 
-addEventListener("fetch", function (event) {
-  event.respondWith(handleRequest(event.request, event));
-});
+if (typeof addEventListener === "function") {
+  addEventListener("fetch", function (event) {
+    event.respondWith(handleRequest(event.request, event));
+  });
+}
 
 async function handleRequest(request, event) {
   try {
@@ -1185,4 +1187,15 @@ function isTruthy(value) {
   }
   var normalized = String(value).toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    parseSubscription: parseSubscription,
+    convertRuleList: convertRuleList,
+    buildProxyGroups: buildProxyGroups,
+    buildRouteRules: buildRouteRules,
+    parseProxyUri: parseProxyUri
+  };
 }
