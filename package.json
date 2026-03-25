@@ -1,0 +1,14 @@
+{
+  "name": "singbox-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker that turns a subscription into managed sing-box configs and BlackMatrix7-backed rule-sets.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}
