@@ -82,11 +82,19 @@ const {
     profile: BASE_CONFIG.profiles.default,
     device: 'apple',
     compat: 'legacy',
+    inlineRuleEntries: [
+      {
+        ruleSet: 'OpenAI',
+        rules: [{ domain_suffix: ['.openai.com'] }]
+      }
+    ],
     nodes: parsed.outbounds
   });
   assert.equal(config.dns.servers[0].address, 'local');
   assert.equal(config.outbounds.some((outbound) => Object.prototype.hasOwnProperty.call(outbound, 'domain_resolver')), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'default_domain_resolver'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'rule_set'), false);
+  assert.equal(config.route.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.openai.com')), true);
 })();
 
 console.log('tests-smoke passed');

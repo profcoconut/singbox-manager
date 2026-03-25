@@ -31,6 +31,7 @@ Default behavior:
 - `/config/default` now returns the Apple-safe profile by default so you only need one import URL.
 - `/config/default.json` is the canonical import URL.
 - Apple/default imports use `compat=legacy` automatically so older sing-box Apple builds can parse the config.
+- Apple/default imports also embed the BlackMatrix7 routing rules directly into the config, so startup does not depend on downloading separate remote rule-set files.
 
 Optional `device` overrides:
 

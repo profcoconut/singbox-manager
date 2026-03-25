@@ -209,6 +209,10 @@ async function handleConfigRequest(request, url, settings) {
     }, 502);
   }
 
+  var inlineRuleEntries = shouldEmbedRulesInConfig(device, compat)
+    ? await buildInlineRouteEntries(settings, profile)
+    : null;
+
   var generated = buildSingBoxConfig({
     requestUrl: url,
     settings: settings,
@@ -216,6 +220,7 @@ async function handleConfigRequest(request, url, settings) {
     profile: profile,
     device: device,
     compat: compat,
+    inlineRuleEntries: inlineRuleEntries,
     nodes: subscription.outbounds
   });
 
@@ -305,8 +310,11 @@ function buildSingBoxConfig(input) {
   var accessToken = input.settings.accessToken || input.requestUrl.searchParams.get("access_token") || "";
   var resolvedNodes = applyOutboundDomainResolver(input.nodes, "dns-direct");
   var proxyGroups = buildProxyGroups(input.profile, resolvedNodes, input.settings);
-  var routeRuleSets = buildRemoteRuleSets(input.requestUrl, input.settings, input.profile, accessToken);
-  var routeRules = buildRouteRules(input.profile, proxyGroups.referenceMap);
+  var useEmbeddedRules = Array.isArray(input.inlineRuleEntries) && input.inlineRuleEntries.length > 0;
+  var routeRuleSets = useEmbeddedRules
+    ? []
+    : buildRemoteRuleSets(input.requestUrl, input.settings, input.profile, accessToken);
+  var routeRules = buildRouteRules(input.profile, proxyGroups.referenceMap, input.inlineRuleEntries);
   var outbounds = []
     .concat([
       { type: "direct", tag: "direct" },
@@ -368,10 +376,13 @@ function buildSingBoxConfig(input) {
       auto_detect_interface: true,
       default_domain_resolver: "dns-direct",
       final: proxyGroups.defaultDetour,
-      rule_set: routeRuleSets,
       rules: routeRules
     }
   };
+
+  if (routeRuleSets.length) {
+    config.route.rule_set = routeRuleSets;
+  }
 
   if (input.compat === "legacy") {
     return toLegacyCompatibleConfig(config);
@@ -464,6 +475,10 @@ function normalizeCompatibility(compat, device) {
     return normalized;
   }
   return device === "apple" ? "legacy" : "modern";
+}
+
+function shouldEmbedRulesInConfig(device, compat) {
+  return compat === "legacy" || device === "apple";
 }
 
 function toLegacyCompatibleConfig(config) {
@@ -577,12 +592,62 @@ function buildRemoteRuleSets(requestUrl, settings, profile, accessToken) {
   return results;
 }
 
-function buildRouteRules(profile, referenceMap) {
+async function buildInlineRouteEntries(settings, profile) {
+  var routes = profile.routes || [];
+  var used = {};
+  var tasks = [];
+
+  for (var i = 0; i < routes.length; i += 1) {
+    var ruleName = routes[i].ruleSet;
+    if (used[ruleName] || !settings.ruleSets[ruleName]) {
+      continue;
+    }
+    used[ruleName] = true;
+    tasks.push(loadInlineRuleEntry(settings, ruleName));
+  }
+
+  return Promise.all(tasks);
+}
+
+async function loadInlineRuleEntry(settings, ruleName) {
+  var ruleMeta = settings.ruleSets[ruleName];
+  var upstreamUrl = settings.ruleRepoBase.replace(/\/$/, "") + "/" + ruleMeta.path;
+  var rawList = await fetchText(upstreamUrl, {
+    headers: settings.subscriptionHeaders,
+    timeoutMs: settings.upstreamTimeoutMs
+  });
+  var converted = convertRuleList(ruleName, rawList);
+  return {
+    ruleSet: ruleName,
+    rules: converted.body.rules || []
+  };
+}
+
+function buildRouteRules(profile, referenceMap, inlineRuleEntries) {
   var rules = buildBaseRouteRules();
   var routes = profile.routes || [];
+  var inlineRuleMap = {};
+
+  if (Array.isArray(inlineRuleEntries)) {
+    for (var j = 0; j < inlineRuleEntries.length; j += 1) {
+      inlineRuleMap[inlineRuleEntries[j].ruleSet] = inlineRuleEntries[j].rules || [];
+    }
+  }
 
   for (var i = 0; i < routes.length; i += 1) {
     var route = routes[i];
+    var inlineRules = inlineRuleMap[route.ruleSet];
+
+    if (inlineRules && inlineRules.length) {
+      for (var k = 0; k < inlineRules.length; k += 1) {
+        rules.push(Object.assign({}, inlineRules[k], {
+          action: "route",
+          outbound: referenceMap[route.outbound] || route.outbound
+        }));
+      }
+      continue;
+    }
+
     rules.push({
       rule_set: ["rs-" + slugify(route.ruleSet)],
       action: "route",
