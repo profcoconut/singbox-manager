@@ -105,11 +105,12 @@ async function handleRequest(request, event) {
         endpoints: {
           profiles: "/profiles",
           config: "/config/:profile?device=tun&access_token=YOUR_TOKEN",
+          apple: "/config/:profile?device=apple&access_token=YOUR_TOKEN",
           rules: "/rules/:ruleSet.json?access_token=YOUR_TOKEN",
           health: "/health"
         },
         profiles: Object.keys(settings.profiles),
-        devices: ["tun", "desktop", "proxy"],
+        devices: ["tun", "apple", "desktop", "proxy"],
         configured: Boolean(settings.subscriptionUrl)
       });
     }
@@ -385,14 +386,19 @@ function buildInbounds(device) {
   var sharedTun = {
     type: "tun",
     tag: "tun-in",
-    interface_name: "singbox0",
     address: ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
     mtu: 9000,
     auto_route: true,
     strict_route: true,
-    stack: "mixed",
-    sniff: true,
-    sniff_override_destination: true
+    stack: "mixed"
+  };
+  var appleTun = {
+    type: "tun",
+    tag: "tun-in",
+    address: ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+    mtu: 1400,
+    auto_route: true,
+    strict_route: true
   };
 
   if (device === "proxy") {
@@ -407,6 +413,12 @@ function buildInbounds(device) {
       }
     ];
   }
+
+  if (device === "apple" || device === "ios") {
+    return [appleTun];
+  }
+
+  sharedTun.interface_name = "singbox0";
 
   if (device === "desktop") {
     return [
@@ -503,18 +515,7 @@ function buildRemoteRuleSets(requestUrl, settings, profile, accessToken) {
 }
 
 function buildRouteRules(profile, referenceMap) {
-  var rules = [
-    {
-      ip_is_private: true,
-      action: "route",
-      outbound: "direct"
-    },
-    {
-      domain_suffix: [".local"],
-      action: "route",
-      outbound: "direct"
-    }
-  ];
+  var rules = buildBaseRouteRules();
   var routes = profile.routes || [];
 
   for (var i = 0; i < routes.length; i += 1) {
@@ -527,6 +528,37 @@ function buildRouteRules(profile, referenceMap) {
   }
 
   return rules;
+}
+
+function buildBaseRouteRules() {
+  return [
+    {
+      action: "sniff"
+    },
+    {
+      type: "logical",
+      mode: "or",
+      rules: [
+        {
+          protocol: "dns"
+        },
+        {
+          port: 53
+        }
+      ],
+      action: "hijack-dns"
+    },
+    {
+      ip_is_private: true,
+      action: "route",
+      outbound: "direct"
+    },
+    {
+      domain_suffix: [".local"],
+      action: "route",
+      outbound: "direct"
+    }
+  ];
 }
 
 function parseSubscription(text) {

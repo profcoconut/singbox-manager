@@ -19,6 +19,7 @@ Cloudflare Worker that:
 
 - `GET /profiles`
 - `GET /config/default?device=tun&access_token=YOUR_TOKEN`
+- `GET /config/default?device=apple&access_token=YOUR_TOKEN`
 - `GET /config/global?device=desktop&access_token=YOUR_TOKEN`
 - `GET /rules/OpenAI.json?access_token=YOUR_TOKEN`
 - `GET /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
@@ -29,6 +30,7 @@ Cloudflare Worker that:
 `device` options:
 
 - `tun`: one TUN inbound for phones/tablets
+- `apple`: Apple-tuned TUN profile with a more conservative inbound layout
 - `desktop`: TUN + local mixed port `127.0.0.1:7890`
 - `proxy`: local mixed port only
 
@@ -125,6 +127,19 @@ curl -sS 'YOUR_SUBSCRIPTION_URL' | curl -sS -X PUT --data-binary @- 'https://YOU
 
 ```bash
 curl -sS 'https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN'
+```
+
+- This repo also includes a scheduled GitHub Actions workflow at [refresh-subscription.yml](/Users/tengpeng/Documents/Playground/.github/workflows/refresh-subscription.yml) that can refresh the KV snapshot automatically outside Cloudflare's network. Set these GitHub repository secrets:
+
+```text
+SUBSCRIPTION_URL
+WORKER_UPLOAD_URL
+```
+
+- `WORKER_UPLOAD_URL` should look like:
+
+```text
+https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN
 ```
 
 - If you want a web admin UI next, the natural next step is adding Cloudflare KV or D1 for editable profiles instead of changing code.

@@ -64,7 +64,8 @@ const {
   const grouped = buildProxyGroups(profile, nodes, { defaultTestUrl: 'https://www.gstatic.com/generate_204' });
   const rules = buildRouteRules(profile, grouped.referenceMap);
   assert.equal(grouped.referenceMap.openai, 'proxy');
-  assert.equal(rules[2].outbound, 'proxy');
+  const openAiRule = rules.find((rule) => Array.isArray(rule.rule_set) && rule.rule_set.includes('rs-openai'));
+  assert.equal(openAiRule.outbound, 'proxy');
 })();
 
 console.log('tests-smoke passed');

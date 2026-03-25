@@ -1,0 +1,29 @@
+name: Refresh Subscription Snapshot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch subscription snapshot
+        env:
+          SUBSCRIPTION_URL: ${{ secrets.SUBSCRIPTION_URL }}
+        run: |
+          test -n "$SUBSCRIPTION_URL"
+          curl --fail --location --silent --show-error "$SUBSCRIPTION_URL" > subscription.txt
+          test -s subscription.txt
+
+      - name: Upload snapshot to worker
+        env:
+          WORKER_UPLOAD_URL: ${{ secrets.WORKER_UPLOAD_URL }}
+        run: |
+          test -n "$WORKER_UPLOAD_URL"
+          curl --fail --silent --show-error \
+            -X PUT \
+            --data-binary @subscription.txt \
+            "$WORKER_UPLOAD_URL"
