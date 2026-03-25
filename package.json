@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "check": "node --check src/index.js",
+    "test": "node tests-smoke.js"
   },
   "engines": {
     "node": ">=18.18.0"
