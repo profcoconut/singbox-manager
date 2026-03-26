@@ -82,6 +82,19 @@ const {
   assert.equal(profile.routes[1].outbound, 'direct');
 })();
 
+(function testOpenAIRouteIncludesChatGPTDomains() {
+  const profile = BASE_CONFIG.profiles.default;
+  const rules = buildRouteRules(profile, {
+    direct: 'direct',
+    openai: 'openai',
+    media: 'media',
+    gaming: 'gaming',
+    proxy: 'proxy'
+  });
+  assert.equal(rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.chatgpt.com') && rule.outbound === 'openai'), true);
+  assert.equal(rules.some((rule) => Array.isArray(rule.domain) && rule.domain.includes('chatgpt.com') && rule.outbound === 'openai'), true);
+})();
+
 (function testMediaPrefersHy2WhenAvailable() {
   const nodes = [
     { tag: 'HK-HY2', type: 'hysteria2' },
@@ -128,11 +141,12 @@ const {
   assert.equal(config.dns.servers[1].address, 'udp://223.5.5.5');
   assert.equal(config.dns.servers[0].detour, 'direct');
   assert.equal(config.dns.servers[1].detour, 'direct');
+  assert.equal(config.outbounds.some((outbound) => outbound.type === 'direct' && outbound.tag === 'direct'), true);
   assert.equal(config.outbounds.some((outbound) => Object.prototype.hasOwnProperty.call(outbound, 'domain_resolver')), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'default_domain_resolver'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'rule_set'), false);
   assert.equal(config.route.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.openai.com')), true);
-  assert.equal(config.outbounds.some((outbound) => outbound.type === 'direct' || outbound.type === 'block'), false);
+  assert.equal(config.outbounds.some((outbound) => outbound.type === 'block'), false);
   assert.equal(config.route.rules.some((rule) => rule.action === 'direct'), true);
   assert.equal(config.route.rules.some((rule) => rule.network === 'udp' && rule.port === 5353 && rule.action === 'direct'), true);
   assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.apple.com') && rule.server === 'dns-direct'), true);

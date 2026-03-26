@@ -26,6 +26,27 @@ var BASE_CONFIG = {
     GitHub: { path: "GitHub/GitHub.list" },
     Google: { path: "Google/Google.list" }
   },
+  localRouteOverrides: {
+    OpenAI: [
+      {
+        domain_suffix: [
+          ".openai.com",
+          ".chatgpt.com",
+          ".oaistatic.com",
+          ".oaiusercontent.com"
+        ]
+      },
+      {
+        domain: [
+          "chat.openai.com",
+          "chatgpt.com",
+          "api.openai.com",
+          "auth.openai.com",
+          "cdn.oaistatic.com"
+        ]
+      }
+    ]
+  },
   profiles: {
     default: {
       description: "Balanced profile with OpenAI/media/game split routing.",
@@ -648,7 +669,7 @@ function toLegacyCompatibleConfig(config) {
     var filteredOutbounds = [];
     for (var k = 0; k < legacy.outbounds.length; k += 1) {
       delete legacy.outbounds[k].domain_resolver;
-      if (legacy.outbounds[k].type === "direct" || legacy.outbounds[k].type === "block") {
+      if (legacy.outbounds[k].type === "block") {
         continue;
       }
       filteredOutbounds.push(legacy.outbounds[k]);
@@ -820,6 +841,14 @@ function buildRouteRules(profile, referenceMap, inlineRuleEntries) {
   for (var i = 0; i < routes.length; i += 1) {
     var route = routes[i];
     var inlineRules = inlineRuleMap[route.ruleSet];
+    var localRules = BASE_CONFIG.localRouteOverrides[route.ruleSet] || [];
+
+    for (var h = 0; h < localRules.length; h += 1) {
+      rules.push(Object.assign({}, localRules[h], {
+        action: "route",
+        outbound: referenceMap[route.outbound] || route.outbound
+      }));
+    }
 
     if (inlineRules && inlineRules.length) {
       for (var k = 0; k < inlineRules.length; k += 1) {
