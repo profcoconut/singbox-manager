@@ -113,6 +113,8 @@ async function handleRequest(request, event) {
         endpoints: {
           profiles: "/profiles",
           config: "/config/:profile.json?access_token=YOUR_TOKEN",
+          config_manifest: "/config/:profile.manifest.json?access_token=YOUR_TOKEN",
+          immutable_config: "/config/:profile@REVISION.json?access_token=YOUR_TOKEN",
           advanced_config: "/config/:profile.json?device=apple|desktop|proxy|tun&compat=legacy|modern&access_token=YOUR_TOKEN",
           rules: "/rules/:ruleSet.json?access_token=YOUR_TOKEN",
           health: "/health"
@@ -142,17 +144,21 @@ async function handleRequest(request, event) {
       if (!isAuthorized(request, url, settings)) {
         return unauthorizedResponse();
       }
-      if (!settings.subscriptionUrl) {
+      var configRequest = parseConfigRequestPath(url.pathname);
+      if (!configRequest) {
+        return jsonResponse({ error: "Unknown config path" }, 404);
+      }
+      if (configRequest.kind !== "snapshot" && !settings.subscriptionUrl) {
         return jsonResponse({ error: "Missing SUBSCRIPTION_URL binding" }, 500);
       }
-      if (!bypassCache) {
+      if (configRequest.kind === "dynamic" && !bypassCache) {
         var cachedConfig = await matchCache(request);
         if (cachedConfig) {
           return cachedConfig;
         }
       }
-      var configResponse = await handleConfigRequest(request, url, settings);
-      if (!bypassCache && configResponse.ok) {
+      var configResponse = await handleConfigRequest(request, url, settings, configRequest);
+      if (configRequest.kind === "dynamic" && !bypassCache && configResponse.ok) {
         event.waitUntil(putCache(request, configResponse.clone()));
       }
       return configResponse;
@@ -197,8 +203,8 @@ async function handleRequest(request, event) {
   }
 }
 
-async function handleConfigRequest(request, url, settings) {
-  var profileName = stripExtension(lastPathPart(url.pathname), ".json");
+async function handleConfigRequest(request, url, settings, configRequest) {
+  var profileName = configRequest.profileName;
   var profile = settings.profiles[profileName];
 
   if (!profile) {
@@ -207,6 +213,11 @@ async function handleConfigRequest(request, url, settings) {
 
   var device = normalizeDevice(url.searchParams.get("device"));
   var compat = normalizeCompatibility(url.searchParams.get("compat"), device);
+
+  if (configRequest.kind === "snapshot") {
+    return await handleConfigSnapshotRequest(settings, profileName, device, compat, configRequest.revision);
+  }
+
   var rawSubscription = await loadSubscriptionText(settings);
   var subscription = parseSubscription(rawSubscription);
 
@@ -232,15 +243,117 @@ async function handleConfigRequest(request, url, settings) {
     nodes: subscription.outbounds
   });
 
-  return jsonResponse(generated, 200, {
-    "cache-control": "private, no-store, max-age=0, must-revalidate",
-    "pragma": "no-cache",
-    "x-singbox-manager-profile": profileName,
-    "x-singbox-manager-device": device,
-    "x-singbox-manager-compat": compat,
-    "x-singbox-manager-nodes": String(subscription.outbounds.length),
-    "x-singbox-manager-unsupported": String(subscription.unsupported.length)
+  var body = JSON.stringify(generated, null, 2);
+  var revision = await createConfigRevision(body);
+  await storeConfigSnapshot(settings, revision, {
+    profile: profileName,
+    device: device,
+    compat: compat,
+    nodes: subscription.outbounds.length,
+    unsupported: subscription.unsupported.length
+  }, body);
+
+  if (configRequest.kind === "manifest") {
+    return jsonResponse(buildConfigManifest(url, profileName, device, compat, revision, subscription), 200, {
+      "cache-control": "private, no-store, max-age=0, must-revalidate",
+      "pragma": "no-cache"
+    });
+  }
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store, max-age=0, must-revalidate",
+      "pragma": "no-cache",
+      "x-singbox-manager-profile": profileName,
+      "x-singbox-manager-device": device,
+      "x-singbox-manager-compat": compat,
+      "x-singbox-manager-nodes": String(subscription.outbounds.length),
+      "x-singbox-manager-unsupported": String(subscription.unsupported.length),
+      "x-singbox-manager-revision": revision,
+      "x-singbox-manager-manifest-path": buildConfigManifestPath(profileName),
+      "x-singbox-manager-immutable-path": buildConfigImmutablePath(profileName, revision)
+    }
   });
+}
+
+async function handleConfigSnapshotRequest(settings, profileName, device, compat, revision) {
+  var body = await loadConfigSnapshot(settings, revision);
+  if (!body) {
+    return jsonResponse({
+      error: "Unknown config snapshot",
+      profile: profileName,
+      revision: revision
+    }, 404);
+  }
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, max-age=31536000, immutable",
+      "x-singbox-manager-profile": profileName,
+      "x-singbox-manager-device": device,
+      "x-singbox-manager-compat": compat,
+      "x-singbox-manager-revision": revision
+    }
+  });
+}
+
+function buildConfigManifest(url, profileName, device, compat, revision, subscription) {
+  var origin = url.origin;
+  var accessToken = url.searchParams.get("access_token") || "";
+  return {
+    profile: profileName,
+    device: device,
+    compat: compat,
+    revision: revision,
+    nodes: subscription.outbounds.length,
+    unsupported: subscription.unsupported.length,
+    dynamic_url: appendAccessToken(origin + "/config/" + profileName + ".json", accessToken),
+    immutable_url: appendAccessToken(origin + buildConfigImmutablePath(profileName, revision), accessToken),
+    manifest_url: appendAccessToken(origin + buildConfigManifestPath(profileName), accessToken),
+    generated_at: new Date().toISOString()
+  };
+}
+
+function buildConfigManifestPath(profileName) {
+  return "/config/" + profileName + ".manifest.json";
+}
+
+function buildConfigImmutablePath(profileName, revision) {
+  return "/config/" + profileName + "@" + revision + ".json";
+}
+
+function parseConfigRequestPath(pathname) {
+  var part = lastPathPart(pathname);
+
+  if (part.slice(-14) === ".manifest.json") {
+    return {
+      kind: "manifest",
+      profileName: stripExtension(stripExtension(part, ".json"), ".manifest")
+    };
+  }
+
+  if (part.slice(-5) !== ".json") {
+    return null;
+  }
+
+  var core = stripExtension(part, ".json");
+  var atIndex = core.lastIndexOf("@");
+  if (atIndex > 0) {
+    return {
+      kind: "snapshot",
+      profileName: core.slice(0, atIndex),
+      revision: core.slice(atIndex + 1)
+    };
+  }
+
+  return {
+    kind: "dynamic",
+    profileName: core
+  };
 }
 
 async function handleRuleRequest(request, url, settings) {
@@ -1348,6 +1461,36 @@ function safeRegexTest(pattern, value) {
   }
 }
 
+async function createConfigRevision(body) {
+  var digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  var bytes = new Uint8Array(digest);
+  var hex = "";
+  for (var i = 0; i < bytes.length; i += 1) {
+    hex += ("0" + bytes[i].toString(16)).slice(-2);
+  }
+  return hex.slice(0, 16);
+}
+
+async function storeConfigSnapshot(settings, revision, metadata, body) {
+  if (!settings.snapshotStore || !revision || !body) {
+    return;
+  }
+  await settings.snapshotStore.put(getConfigSnapshotKey(revision), body, {
+    metadata: metadata
+  });
+}
+
+function loadConfigSnapshot(settings, revision) {
+  if (!settings.snapshotStore || !revision) {
+    return Promise.resolve(null);
+  }
+  return settings.snapshotStore.get(getConfigSnapshotKey(revision));
+}
+
+function getConfigSnapshotKey(revision) {
+  return "config-snapshot:v1:" + revision;
+}
+
 function matchCache(request) {
   return caches.default.match(request);
 }
@@ -1527,6 +1670,10 @@ if (typeof module !== "undefined" && module.exports) {
     buildProxyGroups: buildProxyGroups,
     buildRouteRules: buildRouteRules,
     parseProxyUri: parseProxyUri,
-    buildSingBoxConfig: buildSingBoxConfig
+    buildSingBoxConfig: buildSingBoxConfig,
+    parseConfigRequestPath: parseConfigRequestPath,
+    createConfigRevision: createConfigRevision,
+    buildConfigImmutablePath: buildConfigImmutablePath,
+    buildConfigManifestPath: buildConfigManifestPath
   };
 }

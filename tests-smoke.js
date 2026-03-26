@@ -6,7 +6,11 @@ const {
   parseProxyUri,
   buildProxyGroups,
   buildRouteRules,
-  buildSingBoxConfig
+  buildSingBoxConfig,
+  parseConfigRequestPath,
+  createConfigRevision,
+  buildConfigImmutablePath,
+  buildConfigManifestPath
 } = require('./src/index.js');
 
 (function testParseSubscription() {
@@ -136,4 +140,26 @@ const {
   assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.in-addr.arpa') && rule.server === 'dns-direct'), true);
 })();
 
-console.log('tests-smoke passed');
+(async function testImmutableConfigHelpers() {
+  assert.deepEqual(parseConfigRequestPath('/config/default.json'), {
+    kind: 'dynamic',
+    profileName: 'default'
+  });
+  assert.deepEqual(parseConfigRequestPath('/config/default.manifest.json'), {
+    kind: 'manifest',
+    profileName: 'default'
+  });
+  assert.deepEqual(parseConfigRequestPath('/config/default@abcdef1234567890.json'), {
+    kind: 'snapshot',
+    profileName: 'default',
+    revision: 'abcdef1234567890'
+  });
+  assert.equal(buildConfigManifestPath('default'), '/config/default.manifest.json');
+  assert.equal(buildConfigImmutablePath('default', 'abcdef1234567890'), '/config/default@abcdef1234567890.json');
+  const revision = await createConfigRevision('{"hello":"world"}');
+  assert.equal(/^[a-f0-9]{16}$/.test(revision), true);
+  console.log('tests-smoke passed');
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
