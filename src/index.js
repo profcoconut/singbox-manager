@@ -225,7 +225,8 @@ async function handleConfigRequest(request, url, settings) {
   });
 
   return jsonResponse(generated, 200, {
-    "cache-control": "public, max-age=" + settings.configCacheTtl,
+    "cache-control": "private, no-store, max-age=0, must-revalidate",
+    "pragma": "no-cache",
     "x-singbox-manager-profile": profileName,
     "x-singbox-manager-device": device,
     "x-singbox-manager-compat": compat,
