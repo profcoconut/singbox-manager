@@ -114,6 +114,8 @@ const {
   });
   assert.equal(config.dns.servers[0].address, 'tls://1.1.1.1');
   assert.equal(config.dns.servers[1].address, 'udp://223.5.5.5');
+  assert.equal(config.dns.servers[0].detour, 'direct');
+  assert.equal(config.dns.servers[1].detour, 'direct');
   assert.equal(config.outbounds.some((outbound) => Object.prototype.hasOwnProperty.call(outbound, 'domain_resolver')), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'default_domain_resolver'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'rule_set'), false);

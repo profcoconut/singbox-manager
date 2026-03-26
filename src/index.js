@@ -503,16 +503,15 @@ function toLegacyCompatibleConfig(config) {
     legacy.dns.servers = [
       {
         tag: "dns-remote",
-        address: "tls://1.1.1.1"
+        address: "tls://1.1.1.1",
+        detour: "direct"
       },
       {
         tag: "dns-direct",
-        address: "udp://223.5.5.5"
+        address: "udp://223.5.5.5",
+        detour: "direct"
       }
     ];
-    if (legacy.route && legacy.route.final) {
-      legacy.dns.servers[0].detour = legacy.route.final;
-    }
   }
 
   if (legacy.dns && legacy.dns.rules) {
