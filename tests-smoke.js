@@ -38,6 +38,20 @@ const {
   assert.equal(converted.skipped.length, 1);
 })();
 
+(function testConvertChinaRuleListCoverage() {
+  const raw = [
+    'DOMAIN-SUFFIX,cn',
+    'DOMAIN-KEYWORD,aliyun',
+    'IP-CIDR,101.32.96.0/20,no-resolve',
+    'USER-AGENT,MicroMessenger*'
+  ].join('\n');
+  const converted = convertRuleList('China', raw);
+  assert.equal(converted.body.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.cn')), true);
+  assert.equal(converted.body.rules.some((rule) => Array.isArray(rule.domain_keyword) && rule.domain_keyword.includes('aliyun')), true);
+  assert.equal(converted.body.rules.some((rule) => Array.isArray(rule.ip_cidr) && rule.ip_cidr.includes('101.32.96.0/20')), true);
+  assert.equal(converted.skipped.some((item) => item.reason === 'unsupported-rule-type:USER-AGENT'), true);
+})();
+
 (function testVmessParsing() {
   const payload = Buffer.from(JSON.stringify({
     v: '2',
@@ -80,6 +94,14 @@ const {
   assert.equal(profile.routes[0].outbound, 'direct');
   assert.equal(profile.routes[1].ruleSet, 'ChinaIPs');
   assert.equal(profile.routes[1].outbound, 'direct');
+  const rules = buildRouteRules(profile, {
+    direct: 'direct',
+    openai: 'openai',
+    media: 'media',
+    gaming: 'gaming',
+    proxy: 'proxy'
+  });
+  assert.equal(rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.cn') && rule.outbound === 'direct'), true);
 })();
 
 (function testOpenAIRouteIncludesChatGPTDomains() {
@@ -175,6 +197,7 @@ const {
   assert.equal(config.outbounds.some((outbound) => outbound.type === 'block'), false);
   assert.equal(config.route.rules.some((rule) => rule.action === 'direct'), true);
   assert.equal(config.route.rules.some((rule) => rule.network === 'udp' && rule.port === 5353 && rule.action === 'direct'), true);
+  assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.cn') && rule.server === 'dns-direct'), true);
   assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.apple.com') && rule.server === 'dns-direct'), true);
   assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.query_type) && rule.query_type.includes('PTR') && rule.server === 'dns-direct'), true);
   assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.in-addr.arpa') && rule.server === 'dns-direct'), true);

@@ -27,6 +27,14 @@ var BASE_CONFIG = {
     Google: { path: "Google/Google.list" }
   },
   localRouteOverrides: {
+    China: [
+      {
+        domain_suffix: [
+          ".cn",
+          ".中国"
+        ]
+      }
+    ],
     OpenAI: [
       {
         domain_suffix: [
@@ -503,6 +511,11 @@ function buildSingBoxConfig(input) {
       rules: [
         {
           domain_suffix: [".local"],
+          action: "route",
+          server: "dns-direct"
+        },
+        {
+          domain_suffix: [".cn", ".中国"],
           action: "route",
           server: "dns-direct"
         },
