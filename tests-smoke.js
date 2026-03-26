@@ -117,6 +117,32 @@ const {
   assert.equal(mediaSelector.outbounds[1], 'media-auto');
 })();
 
+(function testOpenAIPrefersHy2AndUsesOpenAITestUrl() {
+  const nodes = [
+    { tag: 'US-HY2', type: 'hysteria2' },
+    { tag: 'JP-HY2', type: 'hysteria2' },
+    { tag: 'US-VLESS', type: 'vless' },
+    { tag: 'US-CHEAP-0.1倍', type: 'hysteria2' }
+  ];
+  const profile = {
+    groups: [
+      { tag: 'proxy', matchAny: ['.*'], autoTest: true, allowManual: true },
+      { tag: 'openai', matchAny: ['US', 'JP'], excludeAny: ['0\\.1倍'], preferTypes: ['hysteria2'], testUrl: 'https://chatgpt.com', autoTest: true, allowManual: true, fallback: 'proxy' }
+    ],
+    routes: [{ ruleSet: 'OpenAI', outbound: 'openai' }],
+    final: 'proxy'
+  };
+  const grouped = buildProxyGroups(profile, nodes, { defaultTestUrl: 'https://www.gstatic.com/generate_204' });
+  const openaiSelector = grouped.outbounds.find((outbound) => outbound.type === 'selector' && outbound.tag === 'openai');
+  const openaiAuto = grouped.outbounds.find((outbound) => outbound.type === 'urltest' && outbound.tag === 'openai-auto');
+  const openaiHy2Auto = grouped.outbounds.find((outbound) => outbound.type === 'urltest' && outbound.tag === 'openai-hy2-auto');
+  assert.equal(openaiAuto.url, 'https://chatgpt.com');
+  assert.deepEqual(openaiHy2Auto.outbounds, ['US-HY2', 'JP-HY2']);
+  assert.equal(openaiSelector.outbounds[0], 'openai-hy2-auto');
+  assert.equal(openaiSelector.outbounds[1], 'openai-auto');
+  assert.equal(openaiAuto.outbounds.includes('US-CHEAP-0.1倍'), false);
+})();
+
 (function testLegacyAppleCompatibilityShape() {
   const lines = [
     'vless://11111111-1111-1111-1111-111111111111@example.com:443?type=ws&security=tls&path=%2Fws#US-Node'

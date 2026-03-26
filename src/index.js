@@ -60,6 +60,9 @@ var BASE_CONFIG = {
         {
           tag: "openai",
           matchAny: ["美国", "\\bUS\\b", "新加坡", "\\bSG\\b", "日本", "\\bJP\\b"],
+          excludeAny: ["0\\.1倍"],
+          preferTypes: ["hysteria2"],
+          testUrl: "https://chatgpt.com",
           autoTest: true,
           allowManual: true,
           fallback: "proxy"
@@ -706,11 +709,12 @@ function buildProxyGroups(profile, nodes, settings) {
     var preferredMembers = listPreferredMembers(matchedNodes, group);
 
     if (group.autoTest !== false && members.length > 1) {
+      var testUrl = group.testUrl || settings.defaultTestUrl;
       outbounds.push({
         type: "urltest",
         tag: autoTag,
         outbounds: members,
-        url: settings.defaultTestUrl,
+        url: testUrl,
         interval: "3m",
         tolerance: 150,
         idle_timeout: "30m",
@@ -723,7 +727,7 @@ function buildProxyGroups(profile, nodes, settings) {
             type: "urltest",
             tag: preferredAutoTag,
             outbounds: preferredMembers,
-            url: settings.defaultTestUrl,
+            url: testUrl,
             interval: "3m",
             tolerance: 150,
             idle_timeout: "30m",
