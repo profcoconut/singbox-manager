@@ -44,6 +44,7 @@ var BASE_CONFIG = {
         {
           tag: "media",
           matchAny: ["香港", "\\bHK\\b", "台湾", "\\bTW\\b", "日本", "\\bJP\\b", "新加坡", "\\bSG\\b", "美国", "\\bUS\\b"],
+          preferTypes: ["hysteria2"],
           autoTest: true,
           allowManual: true,
           fallback: "proxy"
@@ -552,10 +553,12 @@ function buildProxyGroups(profile, nodes, settings) {
 
   for (var i = 0; i < profile.groups.length; i += 1) {
     var group = profile.groups[i];
-    var matched = matchNodes(nodes, group);
+    var matchedNodes = filterMatchingNodes(nodes, group);
+    var matched = listNodeTags(matchedNodes);
     var members = matched.length ? matched : (group.fallback ? [] : listNodeTags(nodes));
     var autoTag = group.tag + "-auto";
     var selectorMembers = [];
+    var preferredMembers = listPreferredMembers(matchedNodes, group);
 
     if (group.autoTest !== false && members.length > 1) {
       outbounds.push({
@@ -568,6 +571,24 @@ function buildProxyGroups(profile, nodes, settings) {
         idle_timeout: "30m",
         interrupt_exist_connections: true
       });
+      if (preferredMembers.length > 0 && preferredMembers.length < members.length) {
+        var preferredAutoTag = buildPreferredAutoTag(group);
+        if (preferredMembers.length > 1) {
+          outbounds.push({
+            type: "urltest",
+            tag: preferredAutoTag,
+            outbounds: preferredMembers,
+            url: settings.defaultTestUrl,
+            interval: "3m",
+            tolerance: 150,
+            idle_timeout: "30m",
+            interrupt_exist_connections: true
+          });
+          selectorMembers.push(preferredAutoTag);
+        } else {
+          selectorMembers.push(preferredMembers[0]);
+        }
+      }
       selectorMembers.push(autoTag);
     }
 
@@ -596,6 +617,13 @@ function buildProxyGroups(profile, nodes, settings) {
     referenceMap: referenceMap,
     defaultDetour: referenceMap[profile.final] || profile.final || "direct"
   };
+}
+
+function buildPreferredAutoTag(group) {
+  if (group.preferTypes && group.preferTypes.length === 1 && group.preferTypes[0] === "hysteria2") {
+    return group.tag + "-hy2-auto";
+  }
+  return group.tag + "-prefer-auto";
 }
 
 function buildRemoteRuleSets(requestUrl, settings, profile, accessToken) {
@@ -1219,12 +1247,33 @@ function simplifyProfiles(settings) {
 }
 
 function matchNodes(nodes, group) {
+  return listNodeTags(filterMatchingNodes(nodes, group));
+}
+
+function filterMatchingNodes(nodes, group) {
   var results = [];
   for (var i = 0; i < nodes.length; i += 1) {
     if (nodeMatchesGroup(nodes[i], group)) {
+      results.push(nodes[i]);
+    }
+  }
+  return results;
+}
+
+function listPreferredMembers(nodes, group) {
+  var results = [];
+  var preferTypes = group.preferTypes || [];
+
+  if (!preferTypes.length) {
+    return results;
+  }
+
+  for (var i = 0; i < nodes.length; i += 1) {
+    if (preferTypes.indexOf(nodes[i].type) !== -1) {
       results.push(nodes[i].tag);
     }
   }
+
   return uniqueStrings(results);
 }
 

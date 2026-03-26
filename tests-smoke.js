@@ -70,6 +70,28 @@ const {
   assert.equal(openAiRule.outbound, 'proxy');
 })();
 
+(function testMediaPrefersHy2WhenAvailable() {
+  const nodes = [
+    { tag: 'HK-HY2', type: 'hysteria2' },
+    { tag: 'HK-VLESS', type: 'vless' },
+    { tag: 'JP-HY2', type: 'hysteria2' }
+  ];
+  const profile = {
+    groups: [
+      { tag: 'proxy', matchAny: ['.*'], autoTest: true, allowManual: true },
+      { tag: 'media', matchAny: ['HK', 'JP'], preferTypes: ['hysteria2'], autoTest: true, allowManual: true, fallback: 'proxy' }
+    ],
+    routes: [{ ruleSet: 'Netflix', outbound: 'media' }],
+    final: 'proxy'
+  };
+  const grouped = buildProxyGroups(profile, nodes, { defaultTestUrl: 'https://www.gstatic.com/generate_204' });
+  const mediaSelector = grouped.outbounds.find((outbound) => outbound.type === 'selector' && outbound.tag === 'media');
+  const mediaHy2Auto = grouped.outbounds.find((outbound) => outbound.type === 'urltest' && outbound.tag === 'media-hy2-auto');
+  assert.deepEqual(mediaHy2Auto.outbounds, ['HK-HY2', 'JP-HY2']);
+  assert.equal(mediaSelector.outbounds[0], 'media-hy2-auto');
+  assert.equal(mediaSelector.outbounds[1], 'media-auto');
+})();
+
 (function testLegacyAppleCompatibilityShape() {
   const lines = [
     'vless://11111111-1111-1111-1111-111111111111@example.com:443?type=ws&security=tls&path=%2Fws#US-Node'
