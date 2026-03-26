@@ -14,6 +14,8 @@ var BASE_CONFIG = {
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
   },
   ruleSets: {
+    China: { path: "China/China.list" },
+    ChinaIPs: { path: "ChinaIPs/ChinaIPs.list" },
     OpenAI: { path: "OpenAI/OpenAI.list" },
     GlobalMedia: { path: "GlobalMedia/GlobalMedia.list" },
     Netflix: { path: "Netflix/Netflix.list" },
@@ -58,6 +60,8 @@ var BASE_CONFIG = {
         }
       ],
       routes: [
+        { ruleSet: "China", outbound: "direct" },
+        { ruleSet: "ChinaIPs", outbound: "direct" },
         { ruleSet: "OpenAI", outbound: "openai" },
         { ruleSet: "GlobalMedia", outbound: "media" },
         { ruleSet: "Netflix", outbound: "media" },
@@ -80,7 +84,10 @@ var BASE_CONFIG = {
           allowManual: true
         }
       ],
-      routes: [],
+      routes: [
+        { ruleSet: "China", outbound: "direct" },
+        { ruleSet: "ChinaIPs", outbound: "direct" }
+      ],
       final: "proxy"
     }
   }

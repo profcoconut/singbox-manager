@@ -70,6 +70,14 @@ const {
   assert.equal(openAiRule.outbound, 'proxy');
 })();
 
+(function testChinaRoutesGoDirectFirst() {
+  const profile = BASE_CONFIG.profiles.default;
+  assert.equal(profile.routes[0].ruleSet, 'China');
+  assert.equal(profile.routes[0].outbound, 'direct');
+  assert.equal(profile.routes[1].ruleSet, 'ChinaIPs');
+  assert.equal(profile.routes[1].outbound, 'direct');
+})();
+
 (function testMediaPrefersHy2WhenAvailable() {
   const nodes = [
     { tag: 'HK-HY2', type: 'hysteria2' },
