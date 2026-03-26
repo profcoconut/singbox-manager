@@ -134,6 +134,10 @@ npm run check
 npm test
 ```
 
+## License | 许可证
+
+MIT
+
 ## Security Notes | 安全提醒
 
 - Do not commit real subscription links or tokens
