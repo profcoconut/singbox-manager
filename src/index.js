@@ -318,8 +318,7 @@ function buildSingBoxConfig(input) {
   var routeRules = buildRouteRules(input.profile, proxyGroups.referenceMap, input.inlineRuleEntries);
   var outbounds = []
     .concat([
-      { type: "direct", tag: "direct" },
-      { type: "block", tag: "block" }
+      { type: "direct", tag: "direct" }
     ])
     .concat(proxyGroups.outbounds)
     .concat(resolvedNodes);
@@ -508,8 +507,26 @@ function toLegacyCompatibleConfig(config) {
   }
 
   if (legacy.outbounds) {
+    var filteredOutbounds = [];
     for (var k = 0; k < legacy.outbounds.length; k += 1) {
       delete legacy.outbounds[k].domain_resolver;
+      if (legacy.outbounds[k].type === "direct" || legacy.outbounds[k].type === "block") {
+        continue;
+      }
+      filteredOutbounds.push(legacy.outbounds[k]);
+    }
+    legacy.outbounds = filteredOutbounds;
+  }
+
+  if (legacy.route && legacy.route.rules) {
+    for (var m = 0; m < legacy.route.rules.length; m += 1) {
+      if (legacy.route.rules[m].outbound === "direct") {
+        delete legacy.route.rules[m].outbound;
+        legacy.route.rules[m].action = "direct";
+      } else if (legacy.route.rules[m].outbound === "block") {
+        delete legacy.route.rules[m].outbound;
+        legacy.route.rules[m].action = "reject";
+      }
     }
   }
 

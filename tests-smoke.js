@@ -95,6 +95,8 @@ const {
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'default_domain_resolver'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'rule_set'), false);
   assert.equal(config.route.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.openai.com')), true);
+  assert.equal(config.outbounds.some((outbound) => outbound.type === 'direct' || outbound.type === 'block'), false);
+  assert.equal(config.route.rules.some((rule) => rule.action === 'direct'), true);
 })();
 
 console.log('tests-smoke passed');
