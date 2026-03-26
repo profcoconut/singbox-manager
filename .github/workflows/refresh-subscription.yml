@@ -27,3 +27,26 @@ jobs:
             -X PUT \
             --data-binary @subscription.txt \
             "$WORKER_UPLOAD_URL"
+
+      - name: Fetch latest iOS mirror config
+        env:
+          WORKER_CONFIG_URL: ${{ secrets.WORKER_CONFIG_URL }}
+        run: |
+          test -n "$WORKER_CONFIG_URL"
+          curl --fail --location --silent --show-error "$WORKER_CONFIG_URL" > default.json
+          test -s default.json
+
+      - name: Update gist mirror
+        env:
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          test -n "$GIST_ID"
+          test -n "$GIST_TOKEN"
+          jq -Rs '{description: "singbox iOS default profile mirror", files: {"default.json": {content: .}}}' default.json > gist-payload.json
+          curl --fail --silent --show-error \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GIST_TOKEN" \
+            https://api.github.com/gists/$GIST_ID \
+            --data-binary @gist-payload.json > /dev/null
