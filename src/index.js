@@ -363,6 +363,11 @@ function buildSingBoxConfig(input) {
           server: "dns-direct"
         },
         {
+          domain_suffix: [".apple.com", ".icloud.com", ".mzstatic.com", ".apple-dns.net"],
+          action: "route",
+          server: "dns-direct"
+        },
+        {
           query_type: ["PTR"],
           action: "route",
           server: "dns-direct"
@@ -498,11 +503,11 @@ function toLegacyCompatibleConfig(config) {
     legacy.dns.servers = [
       {
         tag: "dns-remote",
-        address: "https://1.1.1.1/dns-query"
+        address: "tls://1.1.1.1"
       },
       {
         tag: "dns-direct",
-        address: "dhcp://auto"
+        address: "udp://223.5.5.5"
       }
     ];
     if (legacy.route && legacy.route.final) {
