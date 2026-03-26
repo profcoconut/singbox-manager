@@ -123,6 +123,18 @@ Advanced desktop-only override:
 https://YOUR-WORKER.workers.dev/config/default.json?device=desktop&compat=modern&access_token=YOUR_TOKEN
 ```
 
+## Working on iOS
+
+The iOS Apple/legacy profile is working with the current setup, including group selection and live URLTest latency picking.
+
+Overview screen after import and enable:
+
+![iOS overview](/Users/tengpeng/Downloads/IMG_7387.PNG)
+
+Groups screen showing `proxy`, `openai`, `media`, and `gaming` selectors with their auto-tested groups:
+
+![iOS groups](/Users/tengpeng/Downloads/IMG_7388.PNG)
+
 ## Notes
 
 - BlackMatrix7 contains some rule types that do not map cleanly to sing-box source rule-sets, such as `URL-REGEX`, `PROCESS-NAME`, and `IP-ASN`. This Worker skips those lines and reports the skipped count in the response header.
