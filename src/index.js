@@ -362,6 +362,16 @@ function buildSingBoxConfig(input) {
           server: "dns-direct"
         },
         {
+          query_type: ["PTR"],
+          action: "route",
+          server: "dns-direct"
+        },
+        {
+          domain_suffix: [".in-addr.arpa", ".ip6.arpa"],
+          action: "route",
+          server: "dns-direct"
+        },
+        {
           query_type: ["A", "AAAA", "HTTPS"],
           action: "route",
           server: "dns-remote",
@@ -487,13 +497,16 @@ function toLegacyCompatibleConfig(config) {
     legacy.dns.servers = [
       {
         tag: "dns-remote",
-        address: "local"
+        address: "https://1.1.1.1/dns-query"
       },
       {
         tag: "dns-direct",
-        address: "local"
+        address: "dhcp://auto"
       }
     ];
+    if (legacy.route && legacy.route.final) {
+      legacy.dns.servers[0].detour = legacy.route.final;
+    }
   }
 
   if (legacy.dns && legacy.dns.rules) {
@@ -680,6 +693,12 @@ function buildBaseRouteRules() {
   return [
     {
       action: "sniff"
+    },
+    {
+      network: "udp",
+      port: 5353,
+      action: "route",
+      outbound: "direct"
     },
     {
       type: "logical",

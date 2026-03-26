@@ -90,13 +90,17 @@ const {
     ],
     nodes: parsed.outbounds
   });
-  assert.equal(config.dns.servers[0].address, 'local');
+  assert.equal(config.dns.servers[0].address, 'https://1.1.1.1/dns-query');
+  assert.equal(config.dns.servers[1].address, 'dhcp://auto');
   assert.equal(config.outbounds.some((outbound) => Object.prototype.hasOwnProperty.call(outbound, 'domain_resolver')), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'default_domain_resolver'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.route, 'rule_set'), false);
   assert.equal(config.route.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.openai.com')), true);
   assert.equal(config.outbounds.some((outbound) => outbound.type === 'direct' || outbound.type === 'block'), false);
   assert.equal(config.route.rules.some((rule) => rule.action === 'direct'), true);
+  assert.equal(config.route.rules.some((rule) => rule.network === 'udp' && rule.port === 5353 && rule.action === 'direct'), true);
+  assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.query_type) && rule.query_type.includes('PTR') && rule.server === 'dns-direct'), true);
+  assert.equal(config.dns.rules.some((rule) => Array.isArray(rule.domain_suffix) && rule.domain_suffix.includes('.in-addr.arpa') && rule.server === 'dns-direct'), true);
 })();
 
 console.log('tests-smoke passed');
