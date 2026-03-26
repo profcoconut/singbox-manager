@@ -1,101 +1,48 @@
 # singbox-manager
 
-Cloudflare Worker that:
+Turn a subscription link into a sing-box profile you can import on all your devices.
 
-1. pulls your subscription from `SUBSCRIPTION_URL`
-2. converts BlackMatrix7 Surge rule lists into sing-box remote rule-set JSON
-3. generates per-profile sing-box configs with `urltest` auto selection
-4. lets every device pull the config from one HTTPS URL
+This project runs on Cloudflare Workers and builds a ready-to-use sing-box config from:
 
-## What it does
+- your provider subscription
+- BlackMatrix7 rule lists
+- a simple routing setup for `proxy`, `openai`, `media`, and `gaming`
 
-- Reads the real subscription payload you gave me. It already matches the expected base64 subscription style.
-- Supports `vless://`, `trojan://`, `ss://`, `vmess://`, and `hysteria2://` nodes.
-- Builds `urltest` groups so sing-box can automatically choose the fastest node and switch when a better node appears.
-- Exposes BlackMatrix7-backed endpoints like `/rules/OpenAI.json` and `/rules/Netflix.json`.
-- Lets you route categories to different groups with a simple profile definition in [`src/index.js`](/Users/tengpeng/Documents/Playground/src/index.js).
+## Features
 
-## Endpoints
+- One default profile URL for day-to-day use
+- Apple-friendly config generation for older sing-box iOS builds
+- Fastest-node auto selection with `urltest`
+- Automatic grouping for general traffic, OpenAI, media, and gaming
+- BlackMatrix7-based routing rules
+- Cloudflare Worker deployment
+- GitHub Actions refresh flow when the upstream subscription blocks Worker fetches
 
-- `GET /profiles`
-- `GET /config/default.json?access_token=YOUR_TOKEN`
-- `GET /config/default.json?device=desktop&compat=modern&access_token=YOUR_TOKEN`
-- `GET /rules/OpenAI.json?access_token=YOUR_TOKEN`
-- `GET /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
-- `PUT /admin/subscription?admin_token=YOUR_ADMIN_TOKEN`
-- `POST /admin/subscription/sync?admin_token=YOUR_ADMIN_TOKEN`
-- `GET /health`
+## Screenshots
 
-Default behavior:
+Overview on iOS after import and enable:
 
-- `/config/default` now returns the Apple-safe profile by default so you only need one import URL.
-- `/config/default.json` is the canonical import URL.
-- Apple/default imports use `compat=legacy` automatically so older sing-box Apple builds can parse the config.
-- Apple/default imports also embed the BlackMatrix7 routing rules directly into the config, so startup does not depend on downloading separate remote rule-set files.
+![iOS overview](docs/ios-overview.png)
 
-Optional `device` overrides:
+Group view on iOS with auto-tested selectors:
 
-- `tun`: one TUN inbound for phones/tablets
-- `apple`: Apple-tuned TUN profile with a more conservative inbound layout
-- `desktop`: TUN + local mixed port `127.0.0.1:7890`
-- `proxy`: local mixed port only
+![iOS groups](docs/ios-groups.png)
 
-Optional `compat` overrides:
+## Quick Start
 
-- `legacy`: strips newer DNS/domain-resolver fields for older Apple clients
-- `modern`: keeps the current sing-box 1.13+ schema
-
-## Customize Traffic Routing
-
-Edit [`src/index.js`](/Users/tengpeng/Documents/Playground/src/index.js) in `BASE_CONFIG.profiles`.
-
-`groups` decide which nodes belong to a server pool:
-
-```js
-{
-  tag: "openai",
-  matchAny: ["美国", "\\bUS\\b", "新加坡", "\\bSG\\b", "日本", "\\bJP\\b"],
-  autoTest: true,
-  allowManual: true,
-  fallback: "proxy"
-}
-```
-
-`routes` decide which traffic goes to which pool:
-
-```js
-[
-  { ruleSet: "OpenAI", outbound: "openai" },
-  { ruleSet: "Netflix", outbound: "media" },
-  { ruleSet: "Steam", outbound: "gaming" }
-]
-```
-
-This is the Profiles4limbo-style part: traffic category -> chosen outbound group.
-
-
-## Local sanity checks
-
-Run lightweight parser and conversion checks locally:
-
-```bash
-npm run check
-npm test
-```
-
-## Deploy To Cloudflare
-
-You need Node 18+ locally for `wrangler`.
-
-1. Install a newer Node and Wrangler.
-2. Log into Cloudflare:
+1. Install dependencies:
 
 ```bash
 npm install
+```
+
+2. Log into Cloudflare:
+
+```bash
 npx wrangler login
 ```
 
-3. Add your secrets:
+3. Set your secrets:
 
 ```bash
 npx wrangler secret put SUBSCRIPTION_URL
@@ -103,66 +50,70 @@ npx wrangler secret put ACCESS_TOKEN
 npx wrangler secret put ADMIN_TOKEN
 ```
 
-Use your real subscription URL for `SUBSCRIPTION_URL`.
-
 4. Deploy:
 
 ```bash
 npx wrangler deploy
 ```
 
-5. Import the generated config URL into sing-box on each device:
+5. Import the generated profile into sing-box:
 
 ```text
 https://YOUR-WORKER.workers.dev/config/default.json?access_token=YOUR_TOKEN
 ```
 
-Advanced desktop-only override:
+## How It Works
 
-```text
-https://YOUR-WORKER.workers.dev/config/default.json?device=desktop&compat=modern&access_token=YOUR_TOKEN
-```
+When a device pulls the profile, the Worker:
 
-## Working on iOS
+1. loads your subscription
+2. parses supported nodes like `vless`, `trojan`, `ss`, `vmess`, and `hysteria2`
+3. builds selector and `urltest` groups
+4. applies category routing from BlackMatrix7
+5. returns a sing-box config that is ready to import
 
-The iOS Apple/legacy profile is working with the current setup, including group selection and live URLTest latency picking.
+The default profile is designed to be the one most people use. Advanced device and compatibility overrides still exist, but they are optional.
 
-Overview screen after import and enable:
+## Updates
 
-![iOS overview](/Users/tengpeng/Downloads/IMG_7387.PNG)
+Some providers block direct Cloudflare Worker fetches. This project supports a fallback flow:
 
-Groups screen showing `proxy`, `openai`, `media`, and `gaming` selectors with their auto-tested groups:
+- GitHub Actions fetches the subscription outside Cloudflare
+- the latest snapshot is uploaded to Worker storage
+- optional profile mirrors can be refreshed from the same workflow
 
-![iOS groups](/Users/tengpeng/Downloads/IMG_7388.PNG)
+The included workflow is:
 
-## Notes
+- [refresh-subscription.yml](/Users/tengpeng/Documents/Playground/.github/workflows/refresh-subscription.yml)
 
-- BlackMatrix7 contains some rule types that do not map cleanly to sing-box source rule-sets, such as `URL-REGEX`, `PROCESS-NAME`, and `IP-ASN`. This Worker skips those lines and reports the skipped count in the response header.
-- Latency switching is handled by sing-box `urltest` on the device side, not by Cloudflare.
-- The current subscription host returns `403` to Cloudflare Worker fetches, even though it is reachable from a normal client. Because of that, the Worker now supports a Cloudflare KV snapshot fallback.
-- To refresh the snapshot from a trusted machine, run:
+Useful repository secrets for automation:
+
+- `SUBSCRIPTION_URL`
+- `WORKER_UPLOAD_URL`
+- `WORKER_CONFIG_URL`
+- `GIST_ID`
+- `GIST_TOKEN`
+
+## Development
+
+Run the local checks:
 
 ```bash
-curl -sS 'YOUR_SUBSCRIPTION_URL' | curl -sS -X PUT --data-binary @- 'https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN'
+npm run check
+npm test
 ```
 
-- You can check snapshot status with:
+Main files:
 
-```bash
-curl -sS 'https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN'
-```
+- [src/index.js](/Users/tengpeng/Documents/Playground/src/index.js)
+- [wrangler.toml](/Users/tengpeng/Documents/Playground/wrangler.toml)
+- [tests-smoke.js](/Users/tengpeng/Documents/Playground/tests-smoke.js)
 
-- This repo also includes a scheduled GitHub Actions workflow at [refresh-subscription.yml](/Users/tengpeng/Documents/Playground/.github/workflows/refresh-subscription.yml) that can refresh the KV snapshot automatically outside Cloudflare's network. Set these GitHub repository secrets:
+## Security
 
-```text
-SUBSCRIPTION_URL
-WORKER_UPLOAD_URL
-```
+This repository is meant to stay free of real secrets.
 
-- `WORKER_UPLOAD_URL` should look like:
-
-```text
-https://YOUR-WORKER.workers.dev/admin/subscription?admin_token=YOUR_ADMIN_TOKEN
-```
-
-- If you want a web admin UI next, the natural next step is adding Cloudflare KV or D1 for editable profiles instead of changing code.
+- Do not commit real subscription URLs with tokens
+- Do not commit Worker secrets
+- Do not publish private profile URLs in the README
+- Treat any unlisted mirror URL as sensitive, because the generated config contains real server credentials
