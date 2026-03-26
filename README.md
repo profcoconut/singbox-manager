@@ -1,119 +1,71 @@
-# singbox-manager
+# singbox-manager · 懒人规则
 
-Turn a subscription link into a sing-box profile you can import on all your devices.
+> **Not a subscription converter.** This project keeps your existing subscription nodes, then adds ready-to-use traffic rules on top.
+>
+> **这不是“订阅转换器”。** 这个项目保留你现有订阅节点，只是在上面叠加一套可直接使用的分流规则（懒人规则）。
 
-This project runs on Cloudflare Workers and builds a ready-to-use sing-box config from:
+## Why this project / 为什么做这个项目
 
-- your provider subscription
-- BlackMatrix7 rule lists
-- a simple routing setup for `proxy`, `openai`, `media`, and `gaming`
+- **EN:** Import one profile and use it. Auto-select fast nodes, and route OpenAI / media / gaming traffic to better groups.
+- **中文：** 一个链接导入就能用。自动选快节点，并把 OpenAI / 流媒体 / 游戏流量分到更合适的组。
 
-## Features
+- **EN:** Keep using your provider subscription. No need to manually maintain long rule files on every device.
+- **中文：** 继续用你自己的机场订阅，不用在每台设备手动维护一堆规则文件。
 
-- One default profile URL for day-to-day use
-- Apple-friendly config generation for older sing-box iOS builds
-- Fastest-node auto selection with `urltest`
-- Automatic grouping for general traffic, OpenAI, media, and gaming
-- BlackMatrix7-based routing rules
-- Cloudflare Worker deployment
-- GitHub Actions refresh flow when the upstream subscription blocks Worker fetches
+## What it does / 功能说明
 
-## Screenshots
+- **EN:** Pull nodes from your existing subscription.
+- **中文：** 从你现有订阅拉取节点。
 
-Overview on iOS after import and enable:
+- **EN:** Add prebuilt lazy traffic rules (懒人规则) based on BlackMatrix7 rule sources.
+- **中文：** 基于 BlackMatrix7 规则源，自动加好一套懒人分流规则。
 
-![iOS overview](docs/ios-overview.png)
+- **EN:** Generate one default profile URL for daily use.
+- **中文：** 生成一个日常使用的默认配置链接。
 
-Group view on iOS with auto-tested selectors:
+- **EN:** Support iOS-compatible profile output (including older sing-box core 1.11.x behavior).
+- **中文：** 支持 iOS 兼容配置（包含旧版 sing-box 1.11.x 的兼容行为）。
 
-![iOS groups](docs/ios-groups.png)
+## Quick Start / 快速开始
 
-## Quick Start
-
-1. Install dependencies:
+1) **Deploy Worker / 部署 Worker**
 
 ```bash
 npm install
-```
-
-2. Log into Cloudflare:
-
-```bash
 npx wrangler login
-```
-
-3. Set your secrets:
-
-```bash
 npx wrangler secret put SUBSCRIPTION_URL
 npx wrangler secret put ACCESS_TOKEN
 npx wrangler secret put ADMIN_TOKEN
-```
-
-4. Deploy:
-
-```bash
 npx wrangler deploy
 ```
 
-5. Import the generated profile into sing-box:
+2) **Import this URL / 导入这个链接**
 
 ```text
 https://YOUR-WORKER.workers.dev/config/default.json?access_token=YOUR_TOKEN
 ```
 
-## How It Works
+## Screenshots / 截图
 
-When a device pulls the profile, the Worker:
+![iOS overview](docs/ios-overview.png)
 
-1. loads your subscription
-2. parses supported nodes like `vless`, `trojan`, `ss`, `vmess`, and `hysteria2`
-3. builds selector and `urltest` groups
-4. applies category routing from BlackMatrix7
-5. returns a sing-box config that is ready to import
+![iOS groups](docs/ios-groups.png)
 
-The default profile is designed to be the one most people use. Advanced device and compatibility overrides still exist, but they are optional.
+## Notes / 说明
 
-## Updates
+- **EN:** This project focuses on “rule enhancement for existing subscriptions”, not generic link converting.
+- **中文：** 本项目重点是“给现有订阅加规则”，不是通用的订阅转换站。
 
-Some providers block direct Cloudflare Worker fetches. This project supports a fallback flow:
+- **EN:** If provider blocks Worker direct fetch, use the included GitHub Actions refresh workflow.
+- **中文：** 如果上游屏蔽 Worker 直连拉取，可使用仓库内 GitHub Actions 自动刷新流程。
 
-- GitHub Actions fetches the subscription outside Cloudflare
-- the latest snapshot is uploaded to Worker storage
-- optional profile mirrors can be refreshed from the same workflow
+Workflow file / 工作流文件:
+- `.github/workflows/refresh-subscription.yml`
 
-The included workflow is:
+## Security / 安全
 
-- [refresh-subscription.yml](/Users/tengpeng/Documents/Playground/.github/workflows/refresh-subscription.yml)
+- **EN:** Never commit real subscription URLs, access tokens, or admin tokens.
+- **中文：** 不要提交真实订阅链接、访问令牌或管理令牌。
 
-Useful repository secrets for automation:
-
-- `SUBSCRIPTION_URL`
-- `WORKER_UPLOAD_URL`
-- `WORKER_CONFIG_URL`
-- `GIST_ID`
-- `GIST_TOKEN`
-
-## Development
-
-Run the local checks:
-
-```bash
-npm run check
-npm test
-```
-
-Main files:
-
-- [src/index.js](/Users/tengpeng/Documents/Playground/src/index.js)
-- [wrangler.toml](/Users/tengpeng/Documents/Playground/wrangler.toml)
-- [tests-smoke.js](/Users/tengpeng/Documents/Playground/tests-smoke.js)
-
-## Security
-
-This repository is meant to stay free of real secrets.
-
-- Do not commit real subscription URLs with tokens
-- Do not commit Worker secrets
-- Do not publish private profile URLs in the README
-- Treat any unlisted mirror URL as sensitive, because the generated config contains real server credentials
+- **EN:** Treat any config mirror URL as sensitive.
+- **中文：** 任何配置镜像链接都应视为敏感信息。
